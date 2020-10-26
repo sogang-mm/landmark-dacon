@@ -166,7 +166,8 @@ if __name__ == '__main__':
 
     test_trn = trn.Compose([
         trn.Resize((256, 256)),
-        trn.ToTensor()])
+        trn.ToTensor(),
+        trn.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
 
     category = [i[1] for i in pd.read_csv(args.category_csv).values.tolist()]
 
