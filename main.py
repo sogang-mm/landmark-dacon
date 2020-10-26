@@ -84,7 +84,7 @@ def train(model, loader, criterion, optimizer, epoch):
     log = f'[EPOCH {epoch}] Train Loss : {losses.avg:.4f}, '
     log += f'Top1 : {top1.sum / loader.dataset.__len__():.4f}, '
     log += f'Top5 : {top5.sum / loader.dataset.__len__():.4f}, '
-    log += f'GAP : {_gap:.4f}, '
+    log += f'GAP : {_gap:.4e}, '
     log += f'LR : {_lr:.2e}'
 
     logger.info(log)
@@ -143,7 +143,7 @@ if __name__ == '__main__':
 
     ##
     parser.add_argument('--epochs', dest='epochs', type=int, default=100)
-    parser.add_argument('--batch_size', dest='batch_size', type=int, default=64)
+    parser.add_argument('--batch_size', dest='batch_size', type=int, default=256)
 
     parser.add_argument('--lr', dest='learning_rate', type=float, default=0.001)
     parser.add_argument('--wd', dest='weight_decay', type=float, default=0)
@@ -157,22 +157,21 @@ if __name__ == '__main__':
         os.makedirs(args.ckpt_dir)
 
     train_trn = trn.Compose([
-        trn.RandomResizedCrop(224),
-        trn.RandomHorizontalFlip(),
-        ImageNetPolicy(),
+        # trn.RandomResizedCrop(224),
+        # trn.RandomHorizontalFlip(),
+        # ImageNetPolicy(),
+        trn.Resize((256, 256)),
         trn.ToTensor(),
         trn.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
 
     test_trn = trn.Compose([
-        trn.Resize((224, 224)),
+        trn.Resize((256, 256)),
         trn.ToTensor()])
 
     category = [i[1] for i in pd.read_csv(args.category_csv).values.tolist()]
 
     train_dataset = TrainDataset(args.train_dir, args.train_csv, category, train_trn)
     test_dataset = TestDataset(args.test_dir, args.submission_csv, category, test_trn)
-    # train_dataset.train = train_dataset.train[:64 * 30]
-    # test_dataset.test = test_dataset.test[:250]
 
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=4)
     test_loader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False, num_workers=4)
@@ -181,10 +180,15 @@ if __name__ == '__main__':
     logger.info(args)
 
     model = Resnet50().cuda()
-    model = nn.DataParallel(model)
+    for n, p in model.named_parameters():
+        p.requires_grad = True if n.startswith('fc') else False
+    model = nn.DataParallel(model.cuda())
+
 
     criterion = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=args.learning_rate, weight_decay=args.weight_decay)
+    optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()),
+                           lr=args.learning_rate,
+                           weight_decay=args.weight_decay)
     scheduler = optim.lr_scheduler.StepLR(optimizer=optimizer, step_size=args.step_size, gamma=args.step_gamma)
 
     for ep in range(1, args.epochs):
