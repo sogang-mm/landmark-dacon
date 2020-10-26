@@ -3,3 +3,4 @@ tqdm
 tensorboard
 tensorboardx
 pandas
+efficientnet_pytorch

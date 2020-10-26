@@ -16,7 +16,7 @@ from datetime import datetime
 from tensorboardX import SummaryWriter
 from autoaugment import ImageNetPolicy
 
-from dataset import TrainDataset, TestDataset
+from dataset import LandmarkDataset, TestDataset
 from models import Resnet50
 
 
@@ -24,6 +24,9 @@ def init_logger(save_dir):
     c_time = datetime.now().strftime("%Y%m%d/%H%M%S")
     log_dir = os.path.join(save_dir, c_time)
     log_txt = os.path.join(log_dir, 'log.txt')
+
+    os.makedirs(f'{log_dir}/ckpts')
+    os.makedirs(f'{log_dir}/submissions')
 
     global writer
     writer = SummaryWriter(log_dir)
@@ -91,12 +94,62 @@ def train(model, loader, criterion, optimizer, epoch):
     pbar.set_description(log)
     pbar.close()
 
-    writer.add_scalar('train/loss', losses.avg, epoch)
-    writer.add_scalar('train/top1', top1.sum / loader.dataset.__len__(), epoch)
-    writer.add_scalar('train/top5', top5.sum / loader.dataset.__len__(), epoch)
-    writer.add_scalar('train/GAP', _gap, epoch)
-    writer.add_scalar('train/LR', _lr, epoch)
+    writer.add_scalar('Train/Loss', losses.avg, epoch)
+    writer.add_scalar('Train/Top1', top1.sum / loader.dataset.__len__(), epoch)
+    writer.add_scalar('Train/Top5', top5.sum / loader.dataset.__len__(), epoch)
+    writer.add_scalar('Train/GAP', _gap, epoch)
+    writer.add_scalar('Train/LR', _lr, epoch)
 
+@torch.no_grad()
+def valid(model, loader, criterion, epoch):
+    losses = AverageMeter()
+    top1 = AverageMeter()
+    top5 = AverageMeter()
+    model.eval()
+    pbar = tqdm(loader, ncols=150)
+    y_true = dict()
+    y_pred = dict()
+
+    softmax = nn.Softmax(dim=1)
+
+    for i, (image, iid, target, _) in enumerate(loader, start=1):
+        optimizer.zero_grad()
+        outputs = model(image.cuda())
+        outputs = softmax(outputs)
+        loss = criterion(outputs, target.cuda())
+
+        conf, indice = torch.topk(outputs, k=5)
+        indice = indice.cpu()
+
+        y_true.update({k: t for k, t in zip(iid, target.numpy())})
+        y_pred.update({k: (t, c) for k, t, c in
+                       zip(iid, indice[:, 0].cpu().detach().numpy(), conf[:, 0].cpu().detach().numpy())})
+
+        top1.update(torch.sum(indice[:, :1] == target.view(-1, 1)).item())
+        top5.update(torch.sum(indice == target.view(-1, 1)).item())
+        losses.update(loss)
+
+        log = f'[Epoch {epoch}] Valid Loss : {losses.val:.4f}({losses.avg:.4f}), '
+        log += f'Top1 : {top1.val / loader.batch_size:.4f}({top1.sum / (i * loader.batch_size):.4f}), '
+        log += f'Top5 : {top5.val / loader.batch_size:.4f}({top5.sum / (i * loader.batch_size):.4f})'
+        pbar.set_description(log)
+        pbar.update()
+
+    _lr = optimizer.param_groups[0]['lr']
+    _gap = gap(y_true, y_pred)
+    log = f'[EPOCH {epoch}] Valid Loss : {losses.avg:.4f}, '
+    log += f'Top1 : {top1.sum / loader.dataset.__len__():.4f}, '
+    log += f'Top5 : {top5.sum / loader.dataset.__len__():.4f}, '
+    log += f'GAP : {_gap:.4e}'
+
+    logger.info(log)
+    pbar.set_description(log)
+    pbar.close()
+
+    writer.add_scalar('Valid/Loss', losses.avg, epoch)
+    writer.add_scalar('Valid/Top1', top1.sum / loader.dataset.__len__(), epoch)
+    writer.add_scalar('Valid/Top5', top5.sum / loader.dataset.__len__(), epoch)
+    writer.add_scalar('Valid/GAP', _gap, epoch)
 
 @torch.no_grad()
 def test(model, loader, epoch, log_dir):
@@ -121,7 +174,7 @@ def test(model, loader, epoch, log_dir):
     confideneces = pd.Series(confideneces, name="conf")
 
     df = pd.concat([iids, classes, confideneces], axis=1)
-    df.to_csv(f'{log_dir}/submission_ep{epoch:03d}.csv', index=False)
+    df.to_csv(f'{log_dir}/submissions/submission_ep{epoch:03d}.csv', index=False)
 
 
 if __name__ == '__main__':
@@ -145,10 +198,10 @@ if __name__ == '__main__':
     parser.add_argument('--epochs', dest='epochs', type=int, default=100)
     parser.add_argument('--batch_size', dest='batch_size', type=int, default=256)
 
-    parser.add_argument('--lr', dest='learning_rate', type=float, default=0.001)
-    parser.add_argument('--wd', dest='weight_decay', type=float, default=0)
+    parser.add_argument('--lr', dest='learning_rate', type=float, default=1e-4)
+    parser.add_argument('--wd', dest='weight_decay', type=float, default=1e-5)
 
-    parser.add_argument('-step', '--step_size', type=int, default=10)
+    parser.add_argument('-step', '--step_size', type=int, default=5)
     parser.add_argument('-gamma', '--step_gamma', type=float, default=0.8)
 
     args = parser.parse_args()
@@ -171,20 +224,28 @@ if __name__ == '__main__':
 
     category = [i[1] for i in pd.read_csv(args.category_csv).values.tolist()]
 
-    train_dataset = TrainDataset(args.train_dir, args.train_csv, category, train_trn)
+    train_dataset = LandmarkDataset(args.train_dir, args.train_csv, category, train_trn,'train')
+    valid_dataset = LandmarkDataset(args.train_dir, args.train_csv, category, train_trn,'valid')
     test_dataset = TestDataset(args.test_dir, args.submission_csv, category, test_trn)
 
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=4)
+    valid_loader = DataLoader(valid_dataset, batch_size=args.batch_size, shuffle=True, num_workers=4)
     test_loader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False, num_workers=4)
 
     log_dir = init_logger(args.ckpt_dir)
     logger.info(args)
 
-    model = Resnet50().cuda()
+    from efficientnet_pytorch import EfficientNet
+    model = EfficientNet.from_pretrained('efficientnet-b4', num_classes=1049).cuda()
+    logger.info(model)
     for n, p in model.named_parameters():
-        p.requires_grad = True if n.startswith('fc') else False
-    model = nn.DataParallel(model.cuda())
+        p.requires_grad = True if n.startswith('_fc') else False
 
+    # model = Resnet50().cuda()
+    # for n, p in model.named_parameters():
+    #     p.requires_grad = True if n.startswith('fc') else False
+
+    model = nn.DataParallel(model.cuda())
 
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()),
@@ -194,10 +255,11 @@ if __name__ == '__main__':
 
     for ep in range(1, args.epochs):
         train(model, train_loader, criterion, optimizer, ep)
+        valid(model, train_loader, criterion, ep)
         test(model, test_loader, ep, log_dir)
         scheduler.step()
 
         torch.save({'model_state_dict': model.module.state_dict(),
                     'optim_state_dict': optimizer.state_dict(),
                     'epoch': ep, },
-                   f'{log_dir}/ckpt_epoch_{ep:03d}.pt')
+                   f'{log_dir}/ckpts/ckpt_epoch_{ep:03d}.pt')

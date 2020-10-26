@@ -42,6 +42,11 @@ class Dummy(nn.Module):
 
 
 if __name__ == '__main__':
+    from efficientnet_pytorch import EfficientNet
+
+    model = EfficientNet.from_pretrained('efficientnet-b4', num_classes=1049).cuda()
+    print(model.__repr__())
+    exit()
     a=Resnet50().cuda()
     print(a)
     summary(a,(3,224,224))
