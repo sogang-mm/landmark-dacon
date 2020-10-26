@@ -2,7 +2,7 @@ FROM  pytorch/pytorch:1.5.1-cuda10.1-cudnn7-devel
 
 RUN apt-get update \
     && apt-get -y install \
-    git vim openssh-server
+    apt-utils git vim openssh-server
 
 RUN DEBIAN_FRONTEND="noninteractive" apt-get -y install tzdata
 

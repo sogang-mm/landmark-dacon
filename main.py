@@ -8,7 +8,7 @@ from torch.utils.data import DataLoader
 
 from torch import nn, optim
 from tqdm import tqdm
-from utills import AverageMeter, gap
+from utils import AverageMeter, gap
 
 import os
 import logging
