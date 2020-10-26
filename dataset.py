@@ -33,7 +33,6 @@ class LandmarkDataset(Dataset):
         samples_per_class= defaultdict(list)
         for iid, cid in pd.read_csv(train_csv).values.tolist():
             samples_per_class[cid].append([iid, cid])
-
         samples = []
         random.seed(seed)
         for k, v in samples_per_class.items():
@@ -75,9 +74,14 @@ if __name__ == '__main__':
     category = [i[1] for i in pd.read_csv(cat_csv).values.tolist()]
 
     train_loader = DataLoader(LandmarkDataset(train_dir, train_csv, category,transform=None,phase='train'),
-                              batch_size=32, shuffle=False, num_workers=4)
+                              batch_size=256, shuffle=False, num_workers=4)
     valid_loader = DataLoader(LandmarkDataset(train_dir, train_csv, category, transform=None, phase='valid'),
-                              batch_size=32, shuffle=False, num_workers=4)
+                              batch_size=256, shuffle=False, num_workers=4)
+
+    print(len(train_loader.dataset))
+    print(len(train_loader))
+    print(len(valid_loader))
+    exit()
 
     for i in tqdm(train_loader):
         pass

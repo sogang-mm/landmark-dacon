@@ -100,6 +100,7 @@ def train(model, loader, criterion, optimizer, epoch):
     writer.add_scalar('Train/GAP', _gap, epoch)
     writer.add_scalar('Train/LR', _lr, epoch)
 
+
 @torch.no_grad()
 def valid(model, loader, criterion, epoch):
     losses = AverageMeter()
@@ -150,6 +151,7 @@ def valid(model, loader, criterion, epoch):
     writer.add_scalar('Valid/Top1', top1.sum / loader.dataset.__len__(), epoch)
     writer.add_scalar('Valid/Top5', top5.sum / loader.dataset.__len__(), epoch)
     writer.add_scalar('Valid/GAP', _gap, epoch)
+
 
 @torch.no_grad()
 def test(model, loader, epoch, log_dir):
@@ -210,22 +212,21 @@ if __name__ == '__main__':
         os.makedirs(args.ckpt_dir)
 
     train_trn = trn.Compose([
-        # trn.RandomResizedCrop(224),
-        # trn.RandomHorizontalFlip(),
-        # ImageNetPolicy(),
-        trn.Resize((256, 256)),
+        trn.RandomResizedCrop(256),
+        ImageNetPolicy(),
+        # trn.Resize((256, 256)),
         trn.ToTensor(),
         trn.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
 
-    test_trn = trn.Compose([
+    valid_trn = test_trn = trn.Compose([
         trn.Resize((256, 256)),
         trn.ToTensor(),
         trn.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
 
     category = [i[1] for i in pd.read_csv(args.category_csv).values.tolist()]
 
-    train_dataset = LandmarkDataset(args.train_dir, args.train_csv, category, train_trn,'train')
-    valid_dataset = LandmarkDataset(args.train_dir, args.train_csv, category, train_trn,'valid')
+    train_dataset = LandmarkDataset(args.train_dir, args.train_csv, category, train_trn, 'train')
+    valid_dataset = LandmarkDataset(args.train_dir, args.train_csv, category, valid_trn, 'valid')
     test_dataset = TestDataset(args.test_dir, args.submission_csv, category, test_trn)
 
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=4)
@@ -236,6 +237,7 @@ if __name__ == '__main__':
     logger.info(args)
 
     from efficientnet_pytorch import EfficientNet
+
     model = EfficientNet.from_pretrained('efficientnet-b4', num_classes=1049).cuda()
     logger.info(model)
     for n, p in model.named_parameters():
@@ -255,7 +257,7 @@ if __name__ == '__main__':
 
     for ep in range(1, args.epochs):
         train(model, train_loader, criterion, optimizer, ep)
-        valid(model, train_loader, criterion, ep)
+        valid(model, valid_loader, criterion, ep)
         test(model, test_loader, ep, log_dir)
         scheduler.step()
 
