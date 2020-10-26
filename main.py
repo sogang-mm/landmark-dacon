@@ -174,8 +174,8 @@ if __name__ == '__main__':
     # train_dataset.train = train_dataset.train[:64 * 30]
     # test_dataset.test = test_dataset.test[:250]
 
-    train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True, num_workers=4)
-    test_loader = DataLoader(test_dataset, batch_size=128, shuffle=False, num_workers=4)
+    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=4)
+    test_loader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False, num_workers=4)
 
     log_dir = init_logger(args.ckpt_dir)
     logger.info(args)
