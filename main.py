@@ -20,9 +20,14 @@ from dataset import LandmarkDataset, TestDataset
 from models import Resnet50
 
 
-def init_logger(save_dir):
-    c_time = datetime.now().strftime("%Y%m%d/%H%M%S")
-    log_dir = os.path.join(save_dir, c_time)
+def init_logger(save_dir, comment=None):
+    c_date, c_time = datetime.now().strftime("%Y%m%d/%H%M%S").split('/')
+    if comment is not None:
+        if os.path.exists(os.path.join(save_dir, c_date, comment)):
+            comment += f'_{c_time}'
+    else:
+        comment = c_time
+    log_dir = os.path.join(save_dir, c_date, comment)
     log_txt = os.path.join(log_dir, 'log.txt')
 
     os.makedirs(f'{log_dir}/ckpts')
@@ -189,12 +194,13 @@ if __name__ == '__main__':
     parser.add_argument('--train_csv', dest='train_csv',
                         default="/mldisk/nfs_shared_/ms/landmark_dacon/public/train.csv")
 
-    parser.add_argument('--ckpt_dir', dest='ckpt_dir', default="/hdd/ms/landmark_dacon_ckpt/")
-
     parser.add_argument('--test_dir', dest='test_dir',
                         default="/mldisk/nfs_shared_/ms/landmark_dacon/public/test/")
     parser.add_argument('--submission_csv', dest='submission_csv',
                         default="/mldisk/nfs_shared_/ms/landmark_dacon/public/sample_submission.csv")
+
+    parser.add_argument('--ckpt_dir', dest='ckpt_dir', default="/hdd/ms/landmark_dacon_ckpt/")
+    parser.add_argument('--comment', dest='comment',type=str, default=None)
 
     ##
     parser.add_argument('--epochs', dest='epochs', type=int, default=100)
@@ -207,6 +213,9 @@ if __name__ == '__main__':
     parser.add_argument('-gamma', '--step_gamma', type=float, default=0.8)
 
     args = parser.parse_args()
+
+    log_dir = init_logger(args.ckpt_dir,args.comment)
+    logger.info(args)
 
     if not os.path.exists(args.ckpt_dir):
         os.makedirs(args.ckpt_dir)
@@ -233,15 +242,15 @@ if __name__ == '__main__':
     valid_loader = DataLoader(valid_dataset, batch_size=args.batch_size, shuffle=True, num_workers=4)
     test_loader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False, num_workers=4)
 
-    log_dir = init_logger(args.ckpt_dir)
-    logger.info(args)
 
     from efficientnet_pytorch import EfficientNet
-
     model = EfficientNet.from_pretrained('efficientnet-b4', num_classes=1049).cuda()
     logger.info(model)
+    grad= False
     for n, p in model.named_parameters():
-        p.requires_grad = True if n.startswith('_fc') else False
+        grad = grad or n.startswith('_blocks.22')
+        p.requires_grad = grad
+        logger.info(f'{n}  require grad : {p.requires_grad}')
 
     # model = Resnet50().cuda()
     # for n, p in model.named_parameters():
