@@ -127,7 +127,7 @@ class BaseModel(nn.Module):
         return output
 
 
-class Resnet50(nn.Module):
+class Resnet50(BaseModel):
     def __init__(self):
         super(Resnet50, self).__init__()
         self.base = nn.Sequential(OrderedDict(list(models.resnet50(pretrained=True).named_children())[:-2]))
@@ -161,9 +161,9 @@ class Dummy(nn.Module):
 
 
 class Efficientnet(BaseModel):
-    def __init__(self):
+    def __init__(self,depth):
         super(Efficientnet, self).__init__()
-        self.base = EfficientNet.from_pretrained('efficientnet-b4', num_classes=1049)
+        self.base = EfficientNet.from_pretrained(f'efficientnet-b{depth}', num_classes=1049)
 
     def forward(self, x):
         x = self.base(x)
@@ -171,8 +171,8 @@ class Efficientnet(BaseModel):
 
 
 if __name__ == '__main__':
-    m = Efficientnet()
-
+    # m = Efficientnet(4)
+    m=Resnet50()
     grad = False
     for n, p in m.named_parameters():
         p.requires_grad = grad = grad or n.startswith('base._blocks.22')
