@@ -17,7 +17,7 @@ from tensorboardX import SummaryWriter
 from autoaugment import ImageNetPolicy
 
 from dataset import LandmarkDataset, TestDataset
-from models import Resnet50
+from models import Resnet50, Efficientnet
 
 
 def init_logger(save_dir, comment=None):
@@ -186,23 +186,24 @@ def test(model, loader, epoch, log_dir):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
+    # Data
     parser.add_argument('--category_csv', dest='category_csv',
                         default="/mldisk/nfs_shared_/ms/landmark_dacon/public/category.csv")
 
     parser.add_argument('--train_dir', dest='train_dir',
-                        default="/mldisk/nfs_shared_/ms/landmark_dacon/public/train_lnk/")
+                        default="/mldisk/nfs_shared_/ms/landmark_dacon/public/train")
     parser.add_argument('--train_csv', dest='train_csv',
                         default="/mldisk/nfs_shared_/ms/landmark_dacon/public/train.csv")
 
     parser.add_argument('--test_dir', dest='test_dir',
-                        default="/mldisk/nfs_shared_/ms/landmark_dacon/public/test/")
+                        default="/mldisk/nfs_shared_/ms/landmark_dacon/public/test")
     parser.add_argument('--submission_csv', dest='submission_csv',
                         default="/mldisk/nfs_shared_/ms/landmark_dacon/public/sample_submission.csv")
-
+    # Log/Ckpt directory
     parser.add_argument('--ckpt_dir', dest='ckpt_dir', default="/hdd/ms/landmark_dacon_ckpt/")
-    parser.add_argument('--comment', dest='comment',type=str, default=None)
+    parser.add_argument('--comment', dest='comment', type=str, default=None)
 
-    ##
+    # Hyper-parameter
     parser.add_argument('--epochs', dest='epochs', type=int, default=100)
     parser.add_argument('--batch_size', dest='batch_size', type=int, default=256)
 
@@ -214,7 +215,7 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-    log_dir = init_logger(args.ckpt_dir,args.comment)
+    log_dir = init_logger(args.ckpt_dir, args.comment)
     logger.info(args)
 
     if not os.path.exists(args.ckpt_dir):
@@ -232,30 +233,24 @@ if __name__ == '__main__':
         trn.ToTensor(),
         trn.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
 
-    category = [i[1] for i in pd.read_csv(args.category_csv).values.tolist()]
-
-    train_dataset = LandmarkDataset(args.train_dir, args.train_csv, category, train_trn, 'train')
-    valid_dataset = LandmarkDataset(args.train_dir, args.train_csv, category, valid_trn, 'valid')
-    test_dataset = TestDataset(args.test_dir, args.submission_csv, category, test_trn)
+    train_dataset = LandmarkDataset(args.train_dir, args.train_csv, args.category_csv, train_trn, 'train')
+    valid_dataset = LandmarkDataset(args.train_dir, args.train_csv, args.category_csv, valid_trn, 'valid')
+    test_dataset = TestDataset(args.test_dir, args.submission_csv, args.category_csv, test_trn)
 
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=4)
     valid_loader = DataLoader(valid_dataset, batch_size=args.batch_size, shuffle=True, num_workers=4)
     test_loader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False, num_workers=4)
 
-
-    from efficientnet_pytorch import EfficientNet
-    model = EfficientNet.from_pretrained('efficientnet-b4', num_classes=1049).cuda()
-    logger.info(model)
-    grad= False
-    for n, p in model.named_parameters():
-        grad = grad or n.startswith('_blocks.22')
-        p.requires_grad = grad
-        logger.info(f'{n}  require grad : {p.requires_grad}')
-
+    model = Efficientnet(4).cuda()
     # model = Resnet50().cuda()
-    # for n, p in model.named_parameters():
-    #     p.requires_grad = True if n.startswith('fc') else False
 
+    # freeze layer
+    grad = False
+    for n, p in model.named_parameters():
+        p.requires_grad = grad = grad or n.startswith('base._blocks.22')
+        logger.info(f'Layer : {n},  Grad : {p.requires_grad}')
+
+    logger.info(model.summary((3, 224, 224)))
     model = nn.DataParallel(model.cuda())
 
     criterion = nn.CrossEntropyLoss()

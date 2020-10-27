@@ -9,11 +9,12 @@ import random
 
 
 class LandmarkDataset(Dataset):
-    def __init__(self, base_dir, train_csv, category, transform=None, phase='train',seed=0):
+    def __init__(self, base_dir, data_csv, category_csv, transform=None, phase='train', seed=0):
         self.base_dir = base_dir
-        self.category = category
+        self.category = [i[1] for i in pd.read_csv(category_csv).values.tolist()]
 
-        self.samples = self.split_samples(train_csv, phase, seed)
+        self.region = {c: region for region in os.listdir(base_dir) for c in os.listdir(os.path.join(base_dir, region))}
+        self.samples = self.split_samples(data_csv, phase, seed)
 
         self.loader = default_loader
         self.transform = transform if transform else transforms.Compose(
@@ -25,28 +26,29 @@ class LandmarkDataset(Dataset):
     def __getitem__(self, idx):
         iid, cid = self.samples[idx]
         label = self.category[cid]
-        path = os.path.join(self.base_dir, label, iid + '.JPG')
+        region = self.region[label]
+        path = os.path.join(self.base_dir, region, label, iid + '.JPG')
         img = self.transform(self.loader(path))
         return img, iid, cid, label
 
-    def split_samples(self, train_csv,phase, seed):
-        samples_per_class= defaultdict(list)
-        for iid, cid in pd.read_csv(train_csv).values.tolist():
+    def split_samples(self, data_csv, phase, seed):
+        samples_per_class = defaultdict(list)
+        for iid, cid in pd.read_csv(data_csv).values.tolist():
             samples_per_class[cid].append([iid, cid])
         samples = []
         random.seed(seed)
         for k, v in samples_per_class.items():
             random.shuffle(v)
             c = int(len(v) * 0.8)
-            l = v[:c] if phase == 'train' else v[c:]
+            l = v[:c] if phase.lower() == 'train' else v[c:]
             samples.extend(l)
         return samples
 
 
 class TestDataset(Dataset):
-    def __init__(self, base_dir, submission_csv, category, transform=None):
+    def __init__(self, base_dir, submission_csv, category_csv, transform=None):
         self.base_dir = base_dir
-        self.cateogory = category
+        self.cateogory = [i[1] for i in pd.read_csv(category_csv).values.tolist()]
         self.test = pd.read_csv(submission_csv)['id'].values.tolist()
 
         self.loader = default_loader
@@ -64,28 +66,31 @@ class TestDataset(Dataset):
 
 
 if __name__ == '__main__':
-    train_dir = '/mldisk/nfs_shared_/ms/landmark_dacon/public/train_lnk'
+    train_dir = '/mldisk/nfs_shared_/ms/landmark_dacon/public/train'
     train_csv = '/mldisk/nfs_shared_/ms/landmark_dacon/public/train.csv'
 
-    test_dir = '/mldisk/nfs_shared_/ms/landmark_dacon/public/test/'
+    test_dir = '/mldisk/nfs_shared_/ms/landmark_dacon/public/test'
     submission = '/mldisk/nfs_shared_/ms/landmark_dacon/public/sample_submission.csv'
 
-    cat_csv = '/mldisk/nfs_shared_/ms/landmark_dacon/public/category.csv'
-    category = [i[1] for i in pd.read_csv(cat_csv).values.tolist()]
+    category_csv = '/mldisk/nfs_shared_/ms/landmark_dacon/public/category.csv'
 
-    train_loader = DataLoader(LandmarkDataset(train_dir, train_csv, category,transform=None,phase='train'),
-                              batch_size=256, shuffle=False, num_workers=4)
-    valid_loader = DataLoader(LandmarkDataset(train_dir, train_csv, category, transform=None, phase='valid'),
-                              batch_size=256, shuffle=False, num_workers=4)
+    train_dataset = LandmarkDataset(train_dir, train_csv, category_csv, transform=None, phase='train')
 
-    print(len(train_loader.dataset))
-    print(len(train_loader))
-    print(len(valid_loader))
-    exit()
+    valid_dataset = LandmarkDataset(train_dir, train_csv, category_csv, transform=None, phase='valid')
 
-    for i in tqdm(train_loader):
-        pass
+    test_dataset = TestDataset(test_dir, submission, category_csv)
 
-    test_loader = DataLoader(TestDataset(test_dir, submission, category), batch_size=32, shuffle=False, num_workers=4)
-    for i in tqdm(test_loader):
-        pass
+    train_loader = DataLoader(train_dataset, batch_size=256, shuffle=False, num_workers=4)
+    with tqdm(train_loader) as pbar:
+        for i in pbar:
+            pbar.write(str(i[1][:5]))
+
+    valid_loader = DataLoader(valid_dataset, batch_size=256, shuffle=False, num_workers=4)
+    with tqdm(valid_loader) as pbar:
+        for i in pbar:
+            pbar.write(str(i[1][:5]))
+
+    test_loader = DataLoader(test_dataset, batch_size=256, shuffle=False, num_workers=4)
+    with tqdm(test_loader) as pbar:
+        for i in pbar:
+            pbar.write(str(i[1][:5]))
