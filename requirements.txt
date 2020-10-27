@@ -4,3 +4,4 @@ tensorboard
 tensorboardx
 pandas
 efficientnet_pytorch
+torch_optimizer
