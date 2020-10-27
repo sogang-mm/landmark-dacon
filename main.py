@@ -208,7 +208,7 @@ if __name__ == '__main__':
     parser.add_argument('--batch_size', dest='batch_size', type=int, default=256)
 
     parser.add_argument('--lr', dest='learning_rate', type=float, default=1e-4)
-    parser.add_argument('--wd', dest='weight_decay', type=float, default=1e-5)
+    parser.add_argument('--wd', dest='weight_decay', type=float, default=0)
 
     parser.add_argument('-step', '--step_size', type=int, default=5)
     parser.add_argument('-gamma', '--step_gamma', type=float, default=0.8)
