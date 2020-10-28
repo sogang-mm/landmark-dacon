@@ -18,6 +18,7 @@ from autoaugment import ImageNetPolicy
 
 from dataset import LandmarkDataset, TestDataset
 from models import Resnet50, Efficientnet
+import torch_optimizer as toptim
 
 
 def init_logger(save_dir, comment=None):
@@ -222,14 +223,14 @@ if __name__ == '__main__':
         os.makedirs(args.ckpt_dir)
 
     train_trn = trn.Compose([
-        trn.RandomResizedCrop(256),
+        trn.RandomResizedCrop(224),
         ImageNetPolicy(),
-        # trn.Resize((256, 256)),
+        # trn.Resize((224, 224)),
         trn.ToTensor(),
         trn.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
 
     valid_trn = test_trn = trn.Compose([
-        trn.Resize((256, 256)),
+        trn.Resize((224, 224)),
         trn.ToTensor(),
         trn.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
 
@@ -241,22 +242,27 @@ if __name__ == '__main__':
     valid_loader = DataLoader(valid_dataset, batch_size=args.batch_size, shuffle=True, num_workers=4)
     test_loader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False, num_workers=4)
 
-    model = Efficientnet(4).cuda()
+    model = Efficientnet(0).cuda()
     # model = Resnet50().cuda()
 
     # freeze layer
-    grad = False
-    for n, p in model.named_parameters():
-        p.requires_grad = grad = grad or n.startswith('base._blocks.22')
-        logger.info(f'Layer : {n},  Grad : {p.requires_grad}')
+    # grad = False
+    # for n, p in model.named_parameters():
+    #     p.requires_grad = grad = grad or n.startswith('base._blocks.22')
+    #     logger.info(f'Layer : {n},  Grad : {p.requires_grad}')
 
     logger.info(model.summary((3, 224, 224)))
     model = nn.DataParallel(model.cuda())
 
     criterion = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()),
-                           lr=args.learning_rate,
-                           weight_decay=args.weight_decay)
+    # optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()),
+    #                        lr=args.learning_rate,
+    #                        weight_decay=args.weight_decay)
+    optimizer = toptim.RAdam(filter(lambda p: p.requires_grad, model.parameters()),
+                             lr=args.learning_rate,
+                             betas=(0.9, 0.999),
+                             weight_decay=args.weight_decay)
+
     scheduler = optim.lr_scheduler.StepLR(optimizer=optimizer, step_size=args.step_size, gamma=args.step_gamma)
 
     for ep in range(1, args.epochs):
