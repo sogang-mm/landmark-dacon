@@ -52,26 +52,25 @@ def init_logger(save_dir, comment=None):
 
 
 def train(model, loader, criterion, optimizer, epoch):
+    model.train()
     losses = AverageMeter()
     top1 = AverageMeter()
     top5 = AverageMeter()
-    model.train()
-    pbar = tqdm(loader, ncols=150)
     y_true = dict()
     y_pred = dict()
-
     softmax = nn.Softmax(dim=1)
-
+    pbar = tqdm(loader, ncols=150)
     for i, (image, iid, target, _) in enumerate(loader, start=1):
         optimizer.zero_grad()
         outputs = model(image.cuda())
-        outputs = softmax(outputs)
         loss = criterion(outputs, target.cuda())
+
+        pred = softmax(outputs)
+        conf, indice = torch.topk(pred, k=5)
+        indice = indice.cpu()
+
         loss.backward()
         optimizer.step()
-
-        conf, indice = torch.topk(outputs, k=5)
-        indice = indice.cpu()
 
         y_true.update({k: t for k, t in zip(iid, target.numpy())})
         y_pred.update({k: (t, c) for k, t, c in
@@ -109,23 +108,22 @@ def train(model, loader, criterion, optimizer, epoch):
 
 @torch.no_grad()
 def valid(model, loader, criterion, epoch):
+    model.eval()
     losses = AverageMeter()
     top1 = AverageMeter()
     top5 = AverageMeter()
-    model.eval()
-    pbar = tqdm(loader, ncols=150)
     y_true = dict()
     y_pred = dict()
-
     softmax = nn.Softmax(dim=1)
 
+    pbar = tqdm(loader, ncols=150)
     for i, (image, iid, target, _) in enumerate(loader, start=1):
         optimizer.zero_grad()
         outputs = model(image.cuda())
-        outputs = softmax(outputs)
         loss = criterion(outputs, target.cuda())
 
-        conf, indice = torch.topk(outputs, k=5)
+        pred = softmax(outputs)
+        conf, indice = torch.topk(pred, k=5)
         indice = indice.cpu()
 
         y_true.update({k: t for k, t in zip(iid, target.numpy())})
@@ -169,8 +167,8 @@ def test(model, loader, epoch, log_dir):
     softmax = nn.Softmax(dim=1)
     for i, (image, iid) in enumerate(loader, start=1):
         outputs = model(image.cuda())
-        outputs = softmax(outputs)
-        conf, indice = torch.topk(outputs, k=1)
+        pred = softmax(outputs)
+        conf, indice = torch.topk(pred, k=1)
         iids.extend(iid)
         classes.extend(indice[:, 0].cpu().numpy())
         confideneces.extend(conf[:, 0].cpu().numpy())
